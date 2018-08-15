@@ -27,6 +27,7 @@ var express = require('express');
 var cookieParser = require('cookie-parser');
 var expressSession = require('express-session');
 var bodyParser = require('body-parser');
+var methodOverride = require('method-override');
 var passport = require('passport');
 var util = require('util');
 var bunyan = require('bunyan');
@@ -77,6 +78,7 @@ var findByEmail = function (email, fn) {
 //   credentials (in this case, an OpenID identifier), and invoke a callback
 //   with a user object.
 passport.use(new OIDCStrategy({
+        redirectUrl: config.creds.returnURL,
         callbackURL: config.creds.returnURL,
         realm: config.creds.realm,
         clientID: config.creds.clientID,
@@ -86,26 +88,32 @@ passport.use(new OIDCStrategy({
         skipUserProfile: config.creds.skipUserProfile,
         responseType: config.creds.responseType,
         responseMode: config.creds.responseMode,
-        validateIssuer: false,
+        validateIssuer: config.creds.validateIssuer,
+        allowHttpForRedirectUrl: true,
     },
     function (iss, sub, profile, accessToken, refreshToken, done) {
         if (!profile.email) {
             return done(new Error("No email found"), null);
+        }else{
+            return done("nik")
         }
-        // asynchronous verification, for effect...
-        process.nextTick(function () {
-            findByEmail(profile.email, function (err, user) {
-                if (err) {
-                    return done(err);
-                }
-                if (!user) {
-                    // "Auto-registration"
-                    users.push(profile);
-                    return done(null, profile);
-                }
-                return done(null, user);
-            });
-        });
+
+        // console.log(iss, sub, profile, accessToken, refreshToken, done);
+        //
+        // // asynchronous verification, for effect...
+        // process.nextTick(function () {
+        //     findByEmail(profile.email, function (err, user) {
+        //         if (err) {
+        //             return done(err);
+        //         }
+        //         if (!user) {
+        //             // "Auto-registration"
+        //             users.push(profile);
+        //             return done(null, profile);
+        //         }
+        //         return done(null, user);
+        //     });
+        // });
     }
 ));
 
@@ -115,21 +123,21 @@ passport.use(new OIDCStrategy({
 var app = express();
 
 
-app.configure(function () {
-    app.set('views', __dirname + '/views');
-    app.set('view engine', 'ejs');
-    app.use(express.logger());
-    app.use(express.methodOverride());
-    app.use(cookieParser());
-    app.use(expressSession({secret: 'keyboard cat', resave: true, saveUninitialized: false}));
-    app.use(bodyParser.urlencoded({extended: true}));
-    // Initialize Passport!  Also use passport.session() middleware, to support
-    // persistent login sessions (recommended).
-    app.use(passport.initialize());
-    app.use(passport.session());
-    app.use(app.router);
-    app.use(express.static(__dirname + '/../../public'));
-});
+// app.use(function () {
+app.set('views', __dirname + '/views');
+app.set('view engine', 'ejs');
+app.use(express.logger());
+app.use(methodOverride());
+app.use(cookieParser());
+app.use(expressSession({secret: 'keyboard cat', resave: true, saveUninitialized: false}));
+app.use(bodyParser.urlencoded({extended: true}));
+// Initialize Passport!  Also use passport.session() middleware, to support
+// persistent login sessions (recommended).
+app.use(passport.initialize());
+app.use(passport.session());
+app.use(app.router);
+app.use(express.static(__dirname + '/../../public'));
+// });
 
 //Routes (Section 4)
 
@@ -137,12 +145,16 @@ app.get('/', function (req, res) {
     res.render('index', {user: req.user});
 });
 
+app.get('/fail', (req, res)=>{
+    res.send("failed?");
+});
+
 app.get('/account', ensureAuthenticated, function (req, res) {
     res.render('account', {user: req.user});
 });
 
 app.get('/login',
-    passport.authenticate('azuread-openidconnect', {failureRedirect: '/login'}),
+    passport.authenticate('azuread-openidconnect', {failureRedirect: '/fail'}),
     function (req, res) {
         log.info('Login was called in the Sample');
         res.redirect('/');
@@ -155,7 +167,7 @@ app.get('/login',
 //   provider will redirect the user back to this application at
 //   /auth/openid/return
 app.get('/auth/openid',
-    passport.authenticate('azuread-openidconnect', {failureRedirect: '/login'}),
+    passport.authenticate('azuread-openidconnect', {failureRedirect: '/fail'}),
     function (req, res) {
         log.info('Authentication was called in the Sample');
         res.redirect('/');
@@ -167,7 +179,7 @@ app.get('/auth/openid',
 //   login page.  Otherwise, the primary route function function will be called,
 //   which, in this example, will redirect the user to the home page.
 app.get('/auth/openid/return',
-    passport.authenticate('azuread-openidconnect', {failureRedirect: '/login'}),
+    passport.authenticate('azuread-openidconnect', {failureRedirect: '/fail'}),
     function (req, res) {
         log.info('We received a return from AzureAD.');
         res.redirect('/');
@@ -179,8 +191,14 @@ app.get('/auth/openid/return',
 //   login page.  Otherwise, the primary route function function will be called,
 //   which, in this example, will redirect the user to the home page.
 app.post('/auth/openid/return',
-    passport.authenticate('azuread-openidconnect', {failureRedirect: '/login'}),
+    // (req, res, next) => {
+    //     console.log("nikware");
+    //     next();
+    // },
+    passport.authenticate('azuread-openidconnect', {failureRedirect: '/fail'}),
     function (req, res) {
+
+        console.log(req.body);
         log.info('We received a return from AzureAD.');
         res.redirect('/');
     });
